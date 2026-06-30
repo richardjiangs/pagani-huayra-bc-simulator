@@ -33,7 +33,7 @@ https://richardjiangs.github.io/pagani-huayra-bc-simulator/
 
 ## Trackpad Steering
 
-Long-press and release on the driving canvas to toggle desktop trackpad steering mode.
+Hold `Space` + `T` for 3 seconds to enable desktop trackpad steering mode. You can also long-press and release on the driving canvas to toggle it.
 
 When enabled:
 

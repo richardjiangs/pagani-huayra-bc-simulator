@@ -1354,7 +1354,7 @@ const SPEC = {
 
   function updateInputs(dt) {
     const keyThrottle = (state.keys.KeyW || state.keys.ArrowUp) ? 1 : 0;
-    const keyBrake = (state.keys.Space || state.keys.KeyS || state.keys.ArrowDown) ? 1 : 0;
+    const keyBrake = ((state.keys.Space && !state.keys.KeyT) || state.keys.KeyS || state.keys.ArrowDown) ? 1 : 0;
     const ownerThrottle = Math.max(keyThrottle, state.padThrottle || 0);
     const ownerBrake = Math.max(keyBrake, state.padBrake || 0);
     let steerInput = ((state.keys.KeyD || state.keys.ArrowRight) ? 1 : 0) - ((state.keys.KeyA || state.keys.ArrowLeft) ? 1 : 0);
@@ -2437,19 +2437,25 @@ const SPEC = {
   function bindTrackpadSteering() {
     const canvas = document.getElementById("worldCanvas");
     if (!canvas) return;
-    let holdX = 0, holdY = 0, holdStart = 0, holdArmed = false, ownFullscreen = false;
+    let holdX = 0, holdY = 0, holdStart = 0, holdArmed = false, chordTimer = null, chordArmed = false, ownFullscreen = false, fullscreenWanted = false;
     const resetTrackpadWheel = () => {
       state.touchSteer = 0;
       state.trackpadLastInput = -99;
       document.documentElement.style.setProperty("--tw-rot", "0deg");
     };
     const enterFullscreen = () => {
+      fullscreenWanted = true;
       if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+      ownFullscreen = true;
       document.documentElement.requestFullscreen({ navigationUI: "hide" })
-        .then(() => { ownFullscreen = true; })
-        .catch(() => showToast("Fullscreen was blocked by the browser. Trackpad steering is still on.", "Huayra BC"));
+        .then(() => {
+          ownFullscreen = true;
+          if (!fullscreenWanted && document.fullscreenElement === document.documentElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        })
+        .catch(() => { ownFullscreen = false; fullscreenWanted = false; showToast("Fullscreen was blocked by the browser.", "Huayra BC"); });
     };
     const leaveFullscreen = () => {
+      fullscreenWanted = false;
       if (ownFullscreen && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
       ownFullscreen = false;
     };
@@ -2469,6 +2475,29 @@ const SPEC = {
       showToast(state.trackpadSteering ? "Trackpad steering on — fullscreen capture. Two-finger horizontal swipe steers." : "Trackpad steering off.", "Huayra BC");
     };
     const clearHold = () => { holdArmed = false; };
+    const isTypingTarget = (e) => {
+      const t = e.target;
+      return !!(t && (t.isContentEditable || (t.closest && t.closest("input,textarea,select,[contenteditable='true']"))));
+    };
+    const clearChord = (exitFullscreen) => {
+      if (chordTimer) clearTimeout(chordTimer);
+      chordTimer = null; chordArmed = false;
+      if (exitFullscreen && !state.trackpadSteering) leaveFullscreen();
+    };
+    const maybeStartChord = (e) => {
+      if (state.trackpadSteering || chordTimer || e.repeat || isTypingTarget(e)) return;
+      const chordDown = (e.code === "Space" && state.keys.KeyT) || (e.code === "KeyT" && state.keys.Space);
+      if (!chordDown) return;
+      e.preventDefault();
+      chordArmed = true;
+      enterFullscreen();
+      showToast("Hold Space + T for 3 seconds to enable trackpad steering.", "Huayra BC");
+      chordTimer = setTimeout(() => {
+        chordTimer = null; chordArmed = false;
+        if (state.keys.Space && state.keys.KeyT) setTrackpad(true, false);
+        else leaveFullscreen();
+      }, 3000);
+    };
     canvas.addEventListener("pointerdown", e => {
       if (e.button !== 0 || (e.pointerType && e.pointerType !== "mouse")) return;
       holdX = e.clientX; holdY = e.clientY;
@@ -2501,7 +2530,13 @@ const SPEC = {
       state.touchSteer = clamp(state.touchSteer + steerDelta * 0.002, -1, 1);
       document.documentElement.style.setProperty("--tw-rot", (state.touchSteer * 120) + "deg");
     }, { capture: true, passive: false });
-    window.addEventListener("keydown", e => { if (e.code === "Escape" && state.trackpadSteering) setTrackpad(false, true); });
+    window.addEventListener("keydown", e => { if (e.code === "Escape" && state.trackpadSteering) setTrackpad(false, true); maybeStartChord(e); });
+    window.addEventListener("keyup", e => {
+      if (chordArmed && (e.code === "Space" || e.code === "KeyT")) {
+        clearChord(true);
+        showToast("Trackpad steering hold cancelled.", "Huayra BC");
+      }
+    });
     document.addEventListener("fullscreenchange", () => {
       if (!document.fullscreenElement) {
         ownFullscreen = false;
