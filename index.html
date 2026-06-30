@@ -1484,17 +1484,15 @@ const SPEC = {
     if (state.headingRel > Math.PI) state.headingRel -= 2 * Math.PI; else if (state.headingRel < -Math.PI) state.headingRel += 2 * Math.PI;
     state.laneOffset = clamp(state.laneOffset + dndt * dt, -60, 60);
 
-    // off-track: beyond the track edge you're on grass/run-off, or (street circuits) into a
-    // barrier. Assist/test-driver modes can yaw-correct back toward the line; fully manual
-    // mode only scrubs speed and leaves steering to the driver.
+    // off-track: grass/run-off no longer scrubs speed; only street-circuit barriers
+    // slow the car. Assist/test-driver modes can yaw-correct back toward the line.
     const halfW = halfWidthAt(state.distanceM);
     const overrun = Math.abs(state.laneOffset) - halfW;
     if (overrun > 0.3) {
       const street = state.route.env === "street";
       const edge = (halfW + (street ? 0.7 : 3.4)) * Math.sign(state.laneOffset);   // wall hard, grass has a margin
       if (Math.abs(state.laneOffset) > Math.abs(edge)) state.laneOffset = edge;
-      const decel = street ? 16 : 5;                        // m/s^2 scrubbing against wall / grass (frame-rate independent)
-      state.speedMps = Math.max(0, state.speedMps - decel * Math.min(1.5, overrun) * dt);
+      if (street) state.speedMps = Math.max(0, state.speedMps - 16 * Math.min(1.5, overrun) * dt);
       if (state.assist || state.testDriver) state.headingRel *= (1 - 3 * dt);  // assisted line recovery
       state.offTrack = 1;
     } else state.offTrack = Math.max(0, state.offTrack - dt * 3);
